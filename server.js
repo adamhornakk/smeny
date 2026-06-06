@@ -136,47 +136,7 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.post('/api/auth/register', (req, res) => {
-  const { username, password, name } = req.body;
-  if (!username || !password || !name) {
-    return res.status(400).json({ error: 'Vyplňte všechna pole.' });
-  }
-
-  const db = readDb();
-  const existing = db.users.find(u => u.username.toLowerCase() === username.toLowerCase());
-  if (existing) {
-    return res.status(400).json({ error: 'Uživatelské jméno je již obsazené.' });
-  }
-
-  // Hash password using bcryptjs
-  const hashedPassword = bcrypt.hashSync(password, 10);
-
-  const newUser = {
-    id: db.users.length > 0 ? Math.max(...db.users.map(u => u.id)) + 1 : 1,
-    username,
-    name,
-    password: hashedPassword,
-    role: 'user'
-  };
-
-  db.users.push(newUser);
-  writeDb(db);
-
-  // Generate JWT token
-  const token = jwt.sign(
-    { userId: newUser.id, username: newUser.username, role: newUser.role },
-    JWT_SECRET,
-    { expiresIn: '30d' }
-  );
-
-  res.json({
-    token,
-    user: {
-      id: newUser.id,
-      username: newUser.username,
-      name: newUser.name,
-      role: newUser.role
-    }
-  });
+  return res.status(403).json({ error: 'Samoobslužná registrace je zakázána. Nové uživatele může vytvořit pouze manažer.' });
 });
 
 app.get('/api/auth/me', authenticate, (req, res) => {
@@ -188,6 +148,28 @@ app.get('/api/auth/me', authenticate, (req, res) => {
       role: req.user.role
     }
   });
+});
+
+app.put('/api/auth/change-password', authenticate, (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ error: 'Vyplňte stávající a nové heslo.' });
+  }
+
+  const db = readDb();
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: 'Uživatel nebyl nalezen.' });
+  }
+
+  if (!bcrypt.compareSync(oldPassword, user.password)) {
+    return res.status(400).json({ error: 'Stávající heslo je nesprávné.' });
+  }
+
+  user.password = bcrypt.hashSync(newPassword, 10);
+  writeDb(db);
+
+  res.json({ message: 'Heslo bylo úspěšně změněno.' });
 });
 
 // --- CARS API ---

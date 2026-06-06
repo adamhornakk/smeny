@@ -5,13 +5,55 @@ import PwaInstallPrompt from './components/PwaInstallPrompt';
 import Dashboard from './components/Dashboard';
 import CalendarView from './components/CalendarView';
 import Administration from './components/Administration';
-import { LogOut, Calendar, LayoutDashboard, Settings, Car } from 'lucide-react';
+import { LogOut, Calendar, LayoutDashboard, Settings, Car, Lock } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [queueCount, setQueueCount] = useState(0);
+
+  // Password change state
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Nové heslo a potvrzení se neshodují.');
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      setPasswordError('Nové heslo musí mít alespoň 4 znaky.');
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      await api.changePassword(oldPassword, newPassword);
+      setPasswordSuccess('Heslo bylo úspěšně změněno.');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setShowChangePasswordModal(false);
+        setPasswordSuccess('');
+      }, 1500);
+    } catch (err) {
+      setPasswordError(err.message || 'Nepodařilo se změnit heslo.');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
 
   // Authenticate user on mount if token exists
   useEffect(() => {
@@ -155,6 +197,22 @@ export default function App() {
             
             <button 
               className="btn btn-secondary btn-icon-only" 
+              onClick={() => {
+                setPasswordError('');
+                setPasswordSuccess('');
+                setOldPassword('');
+                setNewPassword('');
+                setConfirmPassword('');
+                setShowChangePasswordModal(true);
+              }} 
+              title="Změnit heslo"
+              style={{ padding: '8px', marginRight: '8px' }}
+            >
+              <Lock size={18} />
+            </button>
+
+            <button 
+              className="btn btn-secondary btn-icon-only" 
               onClick={handleLogout} 
               title="Odhlásit se"
               style={{ padding: '8px' }}
@@ -229,6 +287,107 @@ export default function App() {
       <footer className="footer">
         <p>© {new Date().getFullYear()} Správa Směn Vozidel. Progressive Web App.</p>
       </footer>
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Změna hesla</h3>
+              <button 
+                className="modal-close-btn" 
+                onClick={() => {
+                  setShowChangePasswordModal(false);
+                  setPasswordError('');
+                  setPasswordSuccess('');
+                  setOldPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleChangePassword}>
+              <div className="modal-body" style={{ marginTop: '10px' }}>
+                {passwordError && (
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    color: 'var(--danger)',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.85rem',
+                    marginBottom: '14px'
+                  }}>
+                    {passwordError}
+                  </div>
+                )}
+                {passwordSuccess && (
+                  <div style={{
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                    color: 'var(--success)',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.85rem',
+                    marginBottom: '14px'
+                  }}>
+                    {passwordSuccess}
+                  </div>
+                )}
+                <div className="form-group">
+                  <label htmlFor="old-password">Stávající heslo</label>
+                  <input
+                    id="old-password"
+                    type="password"
+                    className="form-control"
+                    placeholder="••••••••"
+                    value={oldPassword}
+                    onChange={e => setOldPassword(e.target.value)}
+                    required
+                    disabled={passwordLoading}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="new-password">Nové heslo</label>
+                  <input
+                    id="new-password"
+                    type="password"
+                    className="form-control"
+                    placeholder="Minimálně 4 znaky"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    required
+                    disabled={passwordLoading}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label htmlFor="confirm-password">Potvrzení nového hesla</label>
+                  <input
+                    id="confirm-password"
+                    type="password"
+                    className="form-control"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    required
+                    disabled={passwordLoading}
+                  />
+                </div>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', padding: '12px' }} 
+                  disabled={passwordLoading}
+                >
+                  {passwordLoading ? 'Ukládám...' : 'Změnit heslo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

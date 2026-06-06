@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { api } from '../api';
-import { Car, Lock, User, UserPlus, LogIn, AlertCircle } from 'lucide-react';
+import { Car, Lock, User, LogIn, AlertCircle } from 'lucide-react';
 
 export default function Login({ onLoginSuccess }) {
-  const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -16,19 +14,11 @@ export default function Login({ onLoginSuccess }) {
     setLoading(true);
 
     try {
-      if (isRegister) {
-        if (!username || !password || !name) {
-          throw new Error('Vyplňte všechna pole.');
-        }
-        const data = await api.register(username, password, name);
-        onLoginSuccess(data.user);
-      } else {
-        if (!username || !password) {
-          throw new Error('Zadejte uživatelské jméno a heslo.');
-        }
-        const data = await api.login(username, password);
-        onLoginSuccess(data.user);
+      if (!username || !password) {
+        throw new Error('Zadejte uživatelské jméno a heslo.');
       }
+      const data = await api.login(username, password);
+      onLoginSuccess(data.user);
     } catch (err) {
       setError(err.message || 'Něco se nepovedlo. Zkuste to znovu.');
     } finally {
@@ -54,7 +44,7 @@ export default function Login({ onLoginSuccess }) {
           </div>
           <h2 className="auth-title">Správa Směn Vozidel</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-            {isRegister ? 'Vytvořte si nový účet řidiče' : 'Přihlaste se ke svému účtu'}
+            Přihlaste se ke svému účtu
           </p>
         </div>
 
@@ -77,25 +67,6 @@ export default function Login({ onLoginSuccess }) {
         )}
 
         <form onSubmit={handleSubmit}>
-          {isRegister && (
-            <div className="form-group">
-              <label htmlFor="reg-name">Jméno a příjmení</label>
-              <div style={{ position: 'relative' }}>
-                <User size={18} style={{ position: 'absolute', left: '14px', top: '14px', color: 'var(--text-muted)' }} />
-                <input
-                  id="reg-name"
-                  type="text"
-                  className="form-control"
-                  style={{ paddingLeft: '44px', width: '100%' }}
-                  placeholder="např. Jan Novák"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-            </div>
-          )}
-
           <div className="form-group">
             <label htmlFor="auth-username">Uživatelské jméno</label>
             <div style={{ position: 'relative' }}>
@@ -105,7 +76,7 @@ export default function Login({ onLoginSuccess }) {
                 type="text"
                 className="form-control"
                 style={{ paddingLeft: '44px', width: '100%' }}
-                placeholder="např. john"
+                placeholder="např. admin"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={loading}
@@ -138,10 +109,6 @@ export default function Login({ onLoginSuccess }) {
           >
             {loading ? (
               'Načítání...'
-            ) : isRegister ? (
-              <>
-                <UserPlus size={18} /> Registrovat se
-              </>
             ) : (
               <>
                 <LogIn size={18} /> Přihlásit se
@@ -149,21 +116,6 @@ export default function Login({ onLoginSuccess }) {
             )}
           </button>
         </form>
-
-        <div className="auth-toggle">
-          {isRegister ? (
-            <p>
-              Už máte účet?
-              <span onClick={() => { setIsRegister(false); setError(''); }}>Přihlaste se</span>
-            </p>
-          ) : (
-            <p>
-              Nemáte účet?
-              <span onClick={() => { setIsRegister(true); setError(''); }}>Zaregistrujte se</span>
-            </p>
-          )}
-        </div>
-
       </div>
     </div>
   );

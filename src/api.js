@@ -35,16 +35,14 @@ export const api = {
     return data;
   },
 
-  async register(username, password, name) {
-    const data = await handleResponse(
-      await fetch(`${API_BASE}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, name }),
+  async changePassword(oldPassword, newPassword) {
+    return handleResponse(
+      await fetch(`${API_BASE}/auth/change-password`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ oldPassword, newPassword }),
       })
     );
-    localStorage.setItem('smeny_token', data.token);
-    return data;
   },
 
   async getMe() {
