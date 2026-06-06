@@ -22,9 +22,16 @@ Make sure your server has the following installed:
 2. **Install all dependencies**:
    ```bash
    cd /var/www/smeny
-   npm install
+   npm install --legacy-peer-deps
    ```
-3. **Build the production assets**:
+3. **Configure Environment Variables**:
+   Copy the example environment file and edit it to set a secure `JWT_SECRET`:
+   ```bash
+   cp .env.example .env
+   nano .env
+   ```
+   Make sure to generate a strong random secret (e.g., using `openssl rand -hex 32`) for `JWT_SECRET`.
+4. **Build the production assets**:
    Compile the Vite React frontend into the optimized static `/dist` directory that the Express server will host:
    ```bash
    npm run build

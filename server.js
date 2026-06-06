@@ -1,6 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { readDb, writeDb as originalWriteDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -8,6 +12,12 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5050;
+
+// Setup JWT secret key: fallback to generated secure random if not specified
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+if (!process.env.JWT_SECRET) {
+  console.warn('WARNING: JWT_SECRET environment variable is not defined. Using an auto-generated random secret. Existing user sessions will be invalidated on server restart.');
+}
 
 app.use(express.json());
 
@@ -43,24 +53,28 @@ app.use((req, res, next) => {
   next();
 });
 
-// Simple authentication middleware
-// We look up the user by the ID passed in the Authorization header (e.g. "Bearer <userId>")
+// Simple authentication middleware using JWT token
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Uživatel není přihlášen.' });
   }
 
-  const userId = parseInt(authHeader.split(' ')[1], 10);
-  const db = readDb();
-  const user = db.users.find(u => u.id === userId);
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const db = readDb();
+    const user = db.users.find(u => u.id === decoded.userId);
 
-  if (!user) {
-    return res.status(401).json({ error: 'Neplatná relace uživatele.' });
+    if (!user) {
+      return res.status(401).json({ error: 'Neplatná relace uživatele.' });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Neplatný nebo expirovaný přihlašovací token.' });
   }
-
-  req.user = user;
-  next();
 };
 
 // Manager authorization check
@@ -97,14 +111,21 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   const db = readDb();
-  const user = db.users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+  const user = db.users.find(u => u.username.toLowerCase() === username.toLowerCase());
 
-  if (!user) {
+  if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Nesprávné uživatelské jméno nebo heslo.' });
   }
 
+  // Generate JWT token
+  const token = jwt.sign(
+    { userId: user.id, username: user.username, role: user.role },
+    JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+
   res.json({
-    token: user.id.toString(), // Simple token representing user ID
+    token,
     user: {
       id: user.id,
       username: user.username,
@@ -126,19 +147,29 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(400).json({ error: 'Uživatelské jméno je již obsazené.' });
   }
 
+  // Hash password using bcryptjs
+  const hashedPassword = bcrypt.hashSync(password, 10);
+
   const newUser = {
     id: db.users.length > 0 ? Math.max(...db.users.map(u => u.id)) + 1 : 1,
     username,
     name,
-    password,
+    password: hashedPassword,
     role: 'user'
   };
 
   db.users.push(newUser);
   writeDb(db);
 
+  // Generate JWT token
+  const token = jwt.sign(
+    { userId: newUser.id, username: newUser.username, role: newUser.role },
+    JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+
   res.json({
-    token: newUser.id.toString(),
+    token,
     user: {
       id: newUser.id,
       username: newUser.username,
@@ -301,11 +332,14 @@ app.post('/api/users', authenticate, requireManager, (req, res) => {
     return res.status(400).json({ error: 'Uživatelské jméno je již obsazené.' });
   }
 
+  // Hash password using bcryptjs
+  const hashedPassword = bcrypt.hashSync(password, 10);
+
   const newUser = {
     id: db.users.length > 0 ? Math.max(...db.users.map(u => u.id)) + 1 : 1,
     username,
     name,
-    password,
+    password: hashedPassword,
     role
   };
 
