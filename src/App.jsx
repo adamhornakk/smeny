@@ -13,6 +13,40 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [queueCount, setQueueCount] = useState(0);
 
+  // Real-time toast notifications state
+  const [toasts, setToasts] = useState([]);
+
+  const addToast = (title, message, type = 'info') => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, title, message, type }]);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+
+    // Show native browser notification if permission granted
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification(title, { body: message });
+      } catch (err) {
+        console.error('Failed to show native notification:', err);
+      }
+    }
+  };
+
+  const addToastRef = React.useRef(addToast);
+  useEffect(() => {
+    addToastRef.current = addToast;
+  }, [addToast]);
+
+  // Request browser Notification permissions when a user logs in
+  useEffect(() => {
+    if (user && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [user]);
+
   // Password change state
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [oldPassword, setOldPassword] = useState('');
@@ -112,7 +146,8 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    const source = new EventSource('/api/live');
+    const token = localStorage.getItem('smeny_token');
+    const source = new EventSource(`/api/live?token=${encodeURIComponent(token || '')}`);
 
     source.onmessage = (event) => {
       try {
@@ -120,6 +155,19 @@ export default function App() {
         if (data.type === 'update') {
           // Dispatch custom event to notify all components
           window.dispatchEvent(new Event('db-update'));
+
+          if (data.notification) {
+            let type = 'info';
+            const titleLower = data.notification.title.toLowerCase();
+            if (titleLower.includes('schvál') || titleLower.includes('úspěš')) {
+              type = 'success';
+            } else if (titleLower.includes('zamítn') || titleLower.includes('zruš')) {
+              type = 'warning';
+            } else if (titleLower.includes('chyba') || titleLower.includes('nebez')) {
+              type = 'danger';
+            }
+            addToastRef.current(data.notification.title, data.notification.body, type);
+          }
         }
       } catch (err) {
         console.error('SSE parsing error:', err);
@@ -388,6 +436,16 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Toast notifications */}
+      <div className="toast-container">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`toast-item ${toast.type}`}>
+            <button className="toast-close" onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}>✕</button>
+            <div className="toast-header">{toast.title}</div>
+            <div className="toast-body">{toast.message}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

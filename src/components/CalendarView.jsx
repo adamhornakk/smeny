@@ -238,37 +238,7 @@ export default function CalendarView({ currentUser }) {
            d1.getFullYear() === d2.getFullYear();
   };
 
-  // Generate 7 days centered or for the selected week (Mobile)
-  const generateMobileWeekDays = () => {
-    const days = [];
-    const baseDate = new Date(mobileSelectedDate);
-    // Find the Monday of this week
-    let dayOfWeek = baseDate.getDay();
-    dayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Czech week adjustment
-    
-    const monday = new Date(baseDate);
-    monday.setDate(baseDate.getDate() - dayOfWeek);
-
-    const weekdays = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-
-    for (let i = 0; i < 7; i++) {
-      const dayDate = new Date(monday);
-      dayDate.setDate(monday.getDate() + i);
-      
-      days.push({
-        date: dayDate,
-        dayNum: dayDate.getDate(),
-        weekdayName: weekdays[dayDate.getDay()],
-        isToday: isSameDay(dayDate, new Date()),
-        isSelected: isSameDay(dayDate, mobileSelectedDate)
-      });
-    }
-
-    return days;
-  };
-
   const gridDays = generateGridDays();
-  const mobileWeekDays = generateMobileWeekDays();
   const selectedDayShifts = getShiftsForDate(mobileSelectedDate);
 
   return (
@@ -365,20 +335,36 @@ export default function CalendarView({ currentUser }) {
               </div>
             </div>
 
-            {/* MOBILE CALENDAR VIEW (WEEKLY STRIP + SHIFT LIST) */}
+            {/* MOBILE CALENDAR VIEW (MONTH GRID + SHIFT LIST) */}
             <div className="mobile-only">
-              {/* Day horizontal strip switcher */}
-              <div className="mobile-calendar-days-strip">
-                {mobileWeekDays.map((day, idx) => {
-                  const hasShifts = getShiftsForDate(day.date).length > 0;
+              {/* Weekday names above the grid */}
+              <div className="mobile-calendar-grid-header">
+                {['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'].map(day => (
+                  <div key={day} className="mobile-calendar-day-name">{day}</div>
+                ))}
+              </div>
+
+              {/* Monthly calendar grid switcher */}
+              <div className="mobile-calendar-grid">
+                {gridDays.map((cell, idx) => {
+                  const hasShifts = getShiftsForDate(cell.date).length > 0;
+                  const isSelected = isSameDay(cell.date, mobileSelectedDate);
                   return (
                     <button
                       key={idx}
-                      className={`mobile-day-strip-btn ${day.isSelected ? 'selected' : ''} ${day.isToday ? 'today' : ''}`}
-                      onClick={() => setMobileSelectedDate(day.date)}
+                      className={`mobile-grid-day-btn 
+                        ${isSelected ? 'selected' : ''} 
+                        ${cell.isToday ? 'today' : ''} 
+                        ${!cell.isCurrentMonth ? 'other-month' : ''}
+                      `}
+                      onClick={() => {
+                        setMobileSelectedDate(cell.date);
+                        if (!cell.isCurrentMonth) {
+                          setCurrentDate(cell.date);
+                        }
+                      }}
                     >
-                      <span className="mobile-day-weekday">{day.weekdayName}</span>
-                      <span className="mobile-day-num">{day.dayNum}</span>
+                      <span className="mobile-day-num">{cell.dayNum}</span>
                       {hasShifts && <span className="mobile-day-indicator"></span>}
                     </button>
                   );

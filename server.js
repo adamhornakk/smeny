@@ -24,20 +24,34 @@ app.use(express.json());
 // SSE active connection registry
 let activeClients = [];
 
-const notifyClients = () => {
-  activeClients.forEach(c => {
+const notifyClients = (payload = null) => {
+  activeClients.forEach(client => {
     try {
-      c.write('data: {"type":"update"}\n\n');
+      let shouldSend = true;
+      if (payload && payload.targetUserId && client.userId) {
+        shouldSend = client.userId === payload.targetUserId;
+      } else if (payload && payload.targetRole && client.role) {
+        shouldSend = client.role === payload.targetRole;
+      }
+      
+      if (shouldSend) {
+        client.res.write(`data: ${JSON.stringify({ 
+          type: 'update', 
+          notification: payload 
+        })}\n\n`);
+      } else {
+        client.res.write('data: {"type":"update"}\n\n');
+      }
     } catch (err) {
       // Connection closed
     }
   });
 };
 
-const writeDb = (db) => {
+const writeDb = (db, notification = null) => {
   const success = originalWriteDb(db);
   if (success) {
-    notifyClients();
+    notifyClients(notification);
   }
   return success;
 };
@@ -95,10 +109,30 @@ app.get('/api/live', (req, res) => {
   });
 
   res.write('data: {"type":"init"}\n\n');
-  activeClients.push(res);
+
+  // Authenticate SSE client via query parameter
+  const token = req.query.token;
+  let clientUser = null;
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const db = readDb();
+      clientUser = db.users.find(u => u.id === decoded.userId);
+    } catch (err) {
+      // Ignore invalid tokens
+    }
+  }
+
+  const clientObj = {
+    res,
+    userId: clientUser ? clientUser.id : null,
+    role: clientUser ? clientUser.role : null
+  };
+
+  activeClients.push(clientObj);
 
   req.on('close', () => {
-    activeClients = activeClients.filter(c => c !== res);
+    activeClients = activeClients.filter(c => c !== clientObj);
   });
 });
 
@@ -436,7 +470,15 @@ app.post('/api/shifts', authenticate, (req, res) => {
   };
 
   db.shifts.push(newShift);
-  writeDb(db);
+
+  const formattedDate = new Date(dateFrom).toLocaleDateString('cs-CZ');
+  const notificationPayload = {
+    title: 'Nová žádost o směnu',
+    body: `${req.user.name} žádá o vůz ${car.model} dne ${formattedDate}.`,
+    targetRole: 'manager'
+  };
+
+  writeDb(db, notificationPayload);
 
   // Return populated shift
   res.status(201).json({
@@ -458,6 +500,11 @@ app.put('/api/shifts/:id', authenticate, (req, res) => {
   if (!shift) {
     return res.status(404).json({ error: 'Směna nebyla nalezena.' });
   }
+
+  // Capture original status and times
+  const originalStatus = shift.status;
+  const originalDateFrom = shift.dateFrom;
+  const originalDateTo = shift.dateTo;
 
   // Edit notes is allowed for the shift owner or manager
   if (notes !== undefined) {
@@ -558,11 +605,58 @@ app.put('/api/shifts/:id', authenticate, (req, res) => {
     }
   }
 
-  writeDb(db);
+  // Build notification payload
+  let notificationPayload = null;
+  const car = db.cars.find(c => c.id === shift.carId);
+  const carModel = car ? car.model : 'vozidlo';
+  const formattedDate = new Date(shift.dateFrom).toLocaleDateString('cs-CZ');
+
+  if (status !== undefined) {
+    if (status === 'pending_cancel') {
+      notificationPayload = {
+        title: 'Žádost o zrušení směny',
+        body: `${req.user.name} žádá o zrušení směny s vozem ${carModel} dne ${formattedDate}.`,
+        targetRole: 'manager'
+      };
+    } else if (req.user.role === 'manager') {
+      if (originalStatus === 'pending_create' && shift.status === 'approved') {
+        notificationPayload = {
+          title: 'Směna schválena',
+          body: `Vaše směna s vozem ${carModel} dne ${formattedDate} byla schválena.`,
+          targetUserId: shift.userId
+        };
+      } else if (originalStatus === 'pending_create' && shift.status === 'cancelled') {
+        notificationPayload = {
+          title: 'Směna zamítnuta',
+          body: `Vaše žádost o směnu s vozem ${carModel} dne ${formattedDate} byla zamítnuta.`,
+          targetUserId: shift.userId
+        };
+      } else if (originalStatus === 'pending_cancel' && shift.status === 'cancelled') {
+        notificationPayload = {
+          title: 'Zrušení směny schváleno',
+          body: `Vaše směna s vozem ${carModel} dne ${formattedDate} byla úspěšně zrušena.`,
+          targetUserId: shift.userId
+        };
+      } else if (originalStatus === 'pending_cancel' && shift.status === 'approved') {
+        notificationPayload = {
+          title: 'Zrušení směny zamítnuto',
+          body: `Vaše žádost o zrušení směny s vozem ${carModel} dne ${formattedDate} byla zamítnuta. Směna zůstává platná.`,
+          targetUserId: shift.userId
+        };
+      }
+    }
+  } else if ((dateFrom !== undefined || dateTo !== undefined) && req.user.role === 'manager') {
+    notificationPayload = {
+      title: 'Změna času směny',
+      body: `Manažer upravil čas vaší směny s vozem ${carModel} dne ${formattedDate}.`,
+      targetUserId: shift.userId
+    };
+  }
+
+  writeDb(db, notificationPayload);
 
   // Return populated shift
   const user = db.users.find(u => u.id === shift.userId);
-  const car = db.cars.find(c => c.id === shift.carId);
   res.json({
     ...shift,
     userName: user ? user.name : 'Smazaný uživatel',

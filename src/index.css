@@ -915,51 +915,73 @@ button, input, select, textarea {
   border-left: 2px solid #fb7185;
 }
 
-/* Mobile Calendar view */
-.mobile-calendar-days-strip {
+/* Mobile Calendar Month Grid view */
+.mobile-calendar-grid-header {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
-  margin-bottom: 16px;
+  margin-bottom: 6px;
+  text-align: center;
 }
 
-.mobile-day-strip-btn {
+.mobile-calendar-day-name {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.mobile-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.mobile-grid-day-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 4px;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  padding: 6px 0;
   border-radius: var(--radius-sm);
   background: rgba(15, 23, 42, 0.4);
   border: 1px solid var(--border-color);
   color: var(--text-main);
   cursor: pointer;
   transition: all 0.2s;
+  position: relative;
 }
 
-.mobile-day-strip-btn.selected {
+.mobile-grid-day-btn:active {
+  transform: scale(0.95);
+}
+
+.mobile-grid-day-btn.selected {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--text-inverse);
-  box-shadow: 0 4px 8px var(--primary-glow);
+  box-shadow: 0 4px 10px var(--primary-glow);
 }
 
-.mobile-day-strip-btn.today {
+.mobile-grid-day-btn.today {
   border-color: var(--primary-glow);
+  font-weight: 700;
 }
 
-.mobile-day-weekday {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  color: var(--text-muted);
+.mobile-grid-day-btn.other-month {
+  opacity: 0.3;
 }
-.mobile-day-strip-btn.selected .mobile-day-weekday {
-  color: rgba(255, 255, 255, 0.8);
+
+.mobile-grid-day-btn.selected.other-month {
+  opacity: 0.8;
 }
 
 .mobile-day-num {
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin-top: 2px;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .mobile-day-indicator {
@@ -967,7 +989,12 @@ button, input, select, textarea {
   height: 4px;
   border-radius: 50%;
   background: var(--accent);
-  margin-top: 4px;
+  position: absolute;
+  bottom: 4px;
+}
+
+.mobile-grid-day-btn.selected .mobile-day-indicator {
+  background: var(--text-inverse);
 }
 
 .mobile-shifts-day-title {
@@ -1174,5 +1201,99 @@ button, input, select, textarea {
   margin-left: 8px;
   display: inline-block;
   vertical-align: middle;
+}
+
+/* --- TOAST NOTIFICATIONS --- */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 9999;
+  max-width: 350px;
+  width: calc(100% - 48px);
+}
+
+.toast-item {
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transform: translateY(20px);
+  opacity: 0;
+  animation: toast-fade-in 0.3s forwards;
+  position: relative;
+  overflow: hidden;
+  text-align: left;
+}
+
+.toast-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--primary);
+}
+
+.toast-item.info::before {
+  background: var(--primary);
+}
+
+.toast-item.success::before {
+  background: var(--success);
+}
+
+.toast-item.warning::before {
+  background: var(--warning);
+}
+
+.toast-item.danger::before {
+  background: var(--danger);
+}
+
+.toast-header {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-main);
+  padding-right: 20px;
+}
+
+.toast-body {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.toast-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.toast-close:hover {
+  color: var(--text-main);
+}
+
+@keyframes toast-fade-in {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
