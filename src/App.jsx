@@ -88,19 +88,36 @@ export default function App() {
       console.log('Uživatel úspěšně přihlášen k odběru push notifikací.');
     } catch (err) {
       console.error('Chyba při přihlašování k odběru push notifikací:', err);
+      throw err;
     }
   };
 
   const handleEnablePush = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      addToast('Nepodporováno', 'Push notifikace nejsou v tomto prohlížeči podporovány. Na iPhone musíte aplikaci nejprve přidat na plochu (Sdílet -> Přidat na plochu) a otevřít ji odtud.', 'warning');
+      setShowPushBanner(false);
+      return;
+    }
+
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      addToast('Vyžadováno HTTPS', 'Push notifikace na telefonu vyžadují zabezpečené připojení (HTTPS). Pro vývoj můžete použít např. ngrok.', 'danger');
+      setShowPushBanner(false);
+      return;
+    }
+
     try {
       if ('Notification' in window) {
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
           await subscribeUserToPush();
+          addToast('Úspěch', 'Push notifikace na pozadí byly úspěšně aktivovány!', 'success');
+        } else {
+          addToast('Upozornění', 'Oprávnění k zasílání notifikací bylo zamítnuto.', 'warning');
         }
       }
     } catch (err) {
       console.error('Žádost o povolení notifikací selhala:', err);
+      addToast('Chyba', 'Aktivace push notifikací selhala: ' + err.message, 'danger');
     } finally {
       setShowPushBanner(false);
     }
