@@ -169,4 +169,22 @@ export const api = {
       })
     );
   },
+
+  async getVapidPublicKey() {
+    return handleResponse(
+      await fetch(`${API_BASE}/notifications/vapid-key`, {
+        headers: getHeaders(),
+      })
+    );
+  },
+
+  async subscribePush(subscription) {
+    return handleResponse(
+      await fetch(`${API_BASE}/notifications/subscribe`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ subscription }),
+      })
+    );
+  },
 };

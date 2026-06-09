@@ -40,10 +40,83 @@ export default function App() {
     addToastRef.current = addToast;
   }, [addToast]);
 
-  // Request browser Notification permissions when a user logs in
+  // Push Notifications state and methods
+  const [showPushBanner, setShowPushBanner] = useState(false);
+
+  const urlBase64ToUint8Array = (base64String) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
+  const subscribeUserToPush = async () => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn('Push notifikace nejsou v tomto prohlížeči podporovány.');
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      
+      // Get VAPID public key from API
+      const { publicKey } = await api.getVapidPublicKey();
+      if (!publicKey) {
+        throw new Error('Nepodařilo se získat VAPID klíč.');
+      }
+
+      // Check if already subscribed
+      let subscription = await registration.pushManager.getSubscription();
+      
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey)
+        });
+      }
+
+      // Send to backend
+      await api.subscribePush(subscription);
+      console.log('Uživatel úspěšně přihlášen k odběru push notifikací.');
+    } catch (err) {
+      console.error('Chyba při přihlašování k odběru push notifikací:', err);
+    }
+  };
+
+  const handleEnablePush = async () => {
+    try {
+      if ('Notification' in window) {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          await subscribeUserToPush();
+        }
+      }
+    } catch (err) {
+      console.error('Žádost o povolení notifikací selhala:', err);
+    } finally {
+      setShowPushBanner(false);
+    }
+  };
+
+  // Show push notification banner if permission is default (not yet granted)
   useEffect(() => {
-    if (user && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+    if (user && 'PushManager' in window && Notification.permission === 'default') {
+      setShowPushBanner(true);
+    }
+  }, [user]);
+
+  // Auto-subscribe if permission is already granted (on mount or login)
+  useEffect(() => {
+    if (user && 'PushManager' in window && Notification.permission === 'granted') {
+      subscribeUserToPush();
     }
   }, [user]);
 
@@ -276,6 +349,34 @@ export default function App() {
         <div className="container">
           {/* PWA installation prompt */}
           <PwaInstallPrompt />
+
+          {/* Web Push subscription prompt */}
+          {showPushBanner && (
+            <div className="pwa-banner" style={{ background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.15) 0%, rgba(99, 102, 241, 0.05) 100%)', borderColor: 'rgba(45, 212, 191, 0.3)' }}>
+              <div className="pwa-content">
+                <span className="pwa-icon-glow" style={{ fontSize: '1.5rem' }}>🔔</span>
+                <div className="pwa-text">
+                  <h4>Upozornění na pozadí</h4>
+                  <p>Chcete dostávat zprávy o změnách směn i při zavřené aplikaci?</p>
+                </div>
+              </div>
+              <div className="pwa-actions">
+                <button 
+                  className="btn btn-primary" 
+                  onClick={handleEnablePush}
+                  style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: '#0b0f19', fontWeight: 600 }}
+                >
+                  Povolit
+                </button>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => setShowPushBanner(false)}
+                >
+                  Zavřít
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Navigation Tabs */}
           <nav className="nav-tabs">

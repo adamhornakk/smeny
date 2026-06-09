@@ -6,6 +6,16 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { readDb, writeDb as originalWriteDb } from './db.js';
+import webpush from 'web-push';
+
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BOoI5_ZFtrBiaUzrjNOduMO3a047g67FqVTJt6tGjqan_uo3FNgBesWJklV3NVHKWx7kMm_Di7wefw3o-ujxTVI';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'sqOq_MVLcUk2tEqwBLlrHsFJX6_2mmcFxCbRg9nJ7is';
+
+webpush.setVapidDetails(
+  'mailto:smeny@smeny.local',
+  VAPID_PUBLIC_KEY,
+  VAPID_PRIVATE_KEY
+);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,7 +34,8 @@ app.use(express.json());
 // SSE active connection registry
 let activeClients = [];
 
-const notifyClients = (payload = null) => {
+const notifyClients = async (payload = null) => {
+  // 1. SSE live update notification
   activeClients.forEach(client => {
     try {
       let shouldSend = true;
@@ -46,6 +57,55 @@ const notifyClients = (payload = null) => {
       // Connection closed
     }
   });
+
+  // 2. Web Push background notifications
+  if (payload) {
+    try {
+      const db = readDb();
+      let targetUsers = [];
+
+      if (payload.targetUserId) {
+        const user = db.users.find(u => u.id === payload.targetUserId);
+        if (user) targetUsers.push(user);
+      } else if (payload.targetRole) {
+        targetUsers = db.users.filter(u => u.role === payload.targetRole);
+      }
+
+      let subscriptionsUpdated = false;
+
+      for (const targetUser of targetUsers) {
+        if (targetUser.pushSubscriptions && targetUser.pushSubscriptions.length > 0) {
+          const validSubscriptions = [];
+          for (const sub of targetUser.pushSubscriptions) {
+            try {
+              await webpush.sendNotification(sub, JSON.stringify({
+                title: payload.title,
+                body: payload.body
+              }));
+              validSubscriptions.push(sub);
+            } catch (err) {
+              if (err.statusCode === 404 || err.statusCode === 410) {
+                // Subscription has expired or is no longer valid, delete it
+                subscriptionsUpdated = true;
+              } else {
+                console.error(`Chyba při odesílání push notifikace pro uživatele ${targetUser.id}:`, err);
+                validSubscriptions.push(sub);
+              }
+            }
+          }
+          if (subscriptionsUpdated) {
+            targetUser.pushSubscriptions = validSubscriptions;
+          }
+        }
+      }
+
+      if (subscriptionsUpdated) {
+        originalWriteDb(db);
+      }
+    } catch (pushErr) {
+      console.error('Chyba při zpracování push notifikací na pozadí:', pushErr);
+    }
+  }
 };
 
 const writeDb = (db, notification = null) => {
@@ -665,6 +725,38 @@ app.put('/api/shifts/:id', authenticate, (req, res) => {
       ownerName: db.users.find(u => u.id === car.ownerId)?.name || 'Neznámý vlastník'
     } : null
   });
+});
+
+// --- PUSH NOTIFICATIONS API ---
+
+app.get('/api/notifications/vapid-key', authenticate, (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post('/api/notifications/subscribe', authenticate, (req, res) => {
+  const { subscription } = req.body;
+  if (!subscription || !subscription.endpoint) {
+    return res.status(400).json({ error: 'Chybí parametry registrace k odběru.' });
+  }
+
+  const db = readDb();
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: 'Uživatel nebyl nalezen.' });
+  }
+
+  if (!user.pushSubscriptions) {
+    user.pushSubscriptions = [];
+  }
+
+  // Check if subscription already exists to avoid duplicates
+  const exists = user.pushSubscriptions.some(sub => sub.endpoint === subscription.endpoint);
+  if (!exists) {
+    user.pushSubscriptions.push(subscription);
+    originalWriteDb(db);
+  }
+
+  res.status(201).json({ message: 'Registrace k odběru byla úspěšná.' });
 });
 
 // --- SERVING FRONTEND IN PRODUCTION ---
