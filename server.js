@@ -759,6 +759,120 @@ app.post('/api/notifications/subscribe', authenticate, (req, res) => {
   res.status(201).json({ message: 'Registrace k odběru byla úspěšná.' });
 });
 
+// --- CALENDAR INTEGRATION API ---
+
+// Helper function to format date to iCalendar UTC format (YYYYMMDDTHHMMSSZ)
+function formatIcsDate(dateString) {
+  const date = new Date(dateString);
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const hh = String(date.getUTCHours()).padStart(2, '0');
+  const min = String(date.getUTCMinutes()).padStart(2, '0');
+  const ss = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}T${hh}${min}${ss}Z`;
+}
+
+// Get user's calendar token
+app.get('/api/calendar/token', authenticate, (req, res) => {
+  const db = readDb();
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: 'Uživatel nebyl nalezen.' });
+  }
+  res.json({ token: user.calendarToken || null });
+});
+
+// Generate/regenerate user's calendar token
+app.post('/api/calendar/token', authenticate, (req, res) => {
+  const db = readDb();
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: 'Uživatel nebyl nalezen.' });
+  }
+
+  // Generate 24-byte secure hex token (48 chars)
+  const newToken = crypto.randomBytes(24).toString('hex');
+  user.calendarToken = newToken;
+  originalWriteDb(db);
+
+  res.json({ token: newToken });
+});
+
+// Revoke user's calendar token
+app.delete('/api/calendar/token', authenticate, (req, res) => {
+  const db = readDb();
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: 'Uživatel nebyl nalezen.' });
+  }
+
+  delete user.calendarToken;
+  originalWriteDb(db);
+
+  res.json({ message: 'Kalendářové předplatné bylo úspěšně zrušeno.' });
+});
+
+// Public endpoint to serve the iCalendar feed
+app.get('/api/calendar/:token.ics', (req, res) => {
+  const { token } = req.params;
+  const db = readDb();
+
+  const user = db.users.find(u => u.calendarToken === token);
+  if (!user) {
+    return res.status(404).send('Platný kalendář pro tento odkaz nebyl nalezen.');
+  }
+
+  // Find all active shifts for this user
+  const myShifts = db.shifts.filter(s => s.userId === user.id && s.status !== 'cancelled');
+
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Smeny//Scheduler//CS',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:Směny - ${user.name}`,
+    'X-WR-TIMEZONE:UTC'
+  ];
+
+  myShifts.forEach(shift => {
+    const car = db.cars.find(c => c.id === shift.carId);
+    const carInfo = car ? `${car.model} (${car.spz})` : 'Neznámé vozidlo';
+    
+    let statusText = 'Schváleno';
+    if (shift.status === 'pending_create') {
+      statusText = 'Čeká na schválení vytvoření';
+    } else if (shift.status === 'pending_cancel') {
+      statusText = 'Čeká na schválení zrušení';
+    }
+
+    const summary = `Směna: ${carInfo}`;
+    const description = `Poznámka: ${shift.notes || 'Bez poznámky'}\\nStav: ${statusText}`;
+    
+    const dtstart = formatIcsDate(shift.dateFrom);
+    const dtend = formatIcsDate(shift.dateTo);
+    const dtstamp = formatIcsDate(new Date());
+    const uid = `shift-${shift.id}@smeny`;
+
+    icsContent.push('BEGIN:VEVENT');
+    icsContent.push(`UID:${uid}`);
+    icsContent.push(`DTSTAMP:${dtstamp}`);
+    icsContent.push(`DTSTART:${dtstart}`);
+    icsContent.push(`DTEND:${dtend}`);
+    icsContent.push(`SUMMARY:${summary}`);
+    icsContent.push(`DESCRIPTION:${description}`);
+    icsContent.push('END:VEVENT');
+  });
+
+  icsContent.push('END:VCALENDAR');
+
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="smeny-${user.id}.ics"`);
+  res.send(icsContent.join('\r\n'));
+});
+
+
 // --- SERVING FRONTEND IN PRODUCTION ---
 app.use(express.static(path.join(__dirname, 'dist')));
 

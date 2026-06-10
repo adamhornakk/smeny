@@ -5,13 +5,80 @@ import PwaInstallPrompt from './components/PwaInstallPrompt';
 import Dashboard from './components/Dashboard';
 import CalendarView from './components/CalendarView';
 import Administration from './components/Administration';
-import { LogOut, Calendar, LayoutDashboard, Settings, Car, Lock } from 'lucide-react';
+import { LogOut, Calendar, LayoutDashboard, Settings, Car, Lock, CalendarDays, Copy, RefreshCw, Trash2, Check } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [queueCount, setQueueCount] = useState(0);
+
+  // Calendar feed subscription states
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [calendarToken, setCalendarToken] = useState(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarCopying, setCalendarCopying] = useState(false);
+
+  const fetchCalendarToken = async () => {
+    setCalendarLoading(true);
+    try {
+      const data = await api.getCalendarToken();
+      setCalendarToken(data.token);
+    } catch (err) {
+      console.error('Chyba při načítání kalendářového tokenu:', err);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  const handleOpenCalendarModal = () => {
+    setShowCalendarModal(true);
+    fetchCalendarToken();
+  };
+
+  const handleGenerateCalendarToken = async () => {
+    setCalendarLoading(true);
+    try {
+      const data = await api.generateCalendarToken();
+      setCalendarToken(data.token);
+      addToast('Úspěch', 'Odkaz pro odběr kalendáře byl úspěšně vygenerován.', 'success');
+    } catch (err) {
+      addToast('Chyba', 'Nepodařilo se vygenerovat odkaz: ' + err.message, 'danger');
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  const handleDeleteCalendarToken = async () => {
+    if (!window.confirm('Opravdu chcete zrušit odběr kalendáře? Všechna stávající propojení přestanou fungovat.')) {
+      return;
+    }
+    setCalendarLoading(true);
+    try {
+      await api.deleteCalendarToken();
+      setCalendarToken(null);
+      addToast('Úspěch', 'Odběr kalendáře byl zrušen a odkaz byl zneplatněn.', 'success');
+    } catch (err) {
+      addToast('Chyba', 'Nepodařilo se zrušit odběr: ' + err.message, 'danger');
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  const handleCopyCalendarLink = () => {
+    if (!calendarToken) return;
+    const url = `${window.location.origin}/api/calendar/${calendarToken}.ics`;
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        setCalendarCopying(true);
+        addToast('Kopírováno', 'Odkaz byl zkopírován do schránky.', 'success');
+        setTimeout(() => setCalendarCopying(false), 2000);
+      })
+      .catch((err) => {
+        console.error('Kopírování selhalo:', err);
+        addToast('Chyba', 'Nepodařilo se zkopírovat odkaz.', 'danger');
+      });
+  };
 
   // Real-time toast notifications state
   const [toasts, setToasts] = useState([]);
@@ -335,6 +402,15 @@ export default function App() {
             
             <button 
               className="btn btn-secondary btn-icon-only" 
+              onClick={handleOpenCalendarModal} 
+              title="Propojení s kalendářem"
+              style={{ padding: '8px', marginRight: '8px' }}
+            >
+              <CalendarDays size={18} />
+            </button>
+            
+            <button 
+              className="btn btn-secondary btn-icon-only" 
               onClick={() => {
                 setPasswordError('');
                 setPasswordSuccess('');
@@ -551,6 +627,103 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar Integration Modal */}
+      {showCalendarModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CalendarDays size={20} style={{ color: 'var(--accent)' }} />
+                <span>Odběr kalendáře</span>
+              </h3>
+              <button 
+                className="modal-close-btn" 
+                onClick={() => setShowCalendarModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="modal-body" style={{ marginTop: '10px' }}>
+              <p style={{ fontSize: '0.9rem', color: '#94a3b8', lineHeight: '1.5', marginBottom: '16px' }}>
+                Zkopírujte si svůj osobní odkaz níže a přidejte si jej do své kalendářové aplikace (Google Kalendář, Apple Kalendář na iPhone, Outlook apod.). V kalendáři uvidíte <strong>pouze své schválené směny</strong>.
+              </p>
+
+              {calendarLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                  <div className="spinner"></div>
+                  <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Načítám...</span>
+                </div>
+              ) : !calendarToken ? (
+                <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleGenerateCalendarToken}
+                    style={{ width: '100%', padding: '12px' }}
+                  >
+                    Generovat kalendářový odkaz
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div className="form-group">
+                    <label>Váš osobní odkaz na kalendář (.ics)</label>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                      <input
+                        type="text"
+                        className="form-control"
+                        readOnly
+                        value={`${window.location.origin}/api/calendar/${calendarToken}.ics`}
+                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.8rem', background: '#0b0f19', borderColor: '#334155' }}
+                        onClick={(e) => e.target.select()}
+                      />
+                      <button 
+                        className={`btn ${calendarCopying ? 'btn-success' : 'btn-primary'}`}
+                        onClick={handleCopyCalendarLink}
+                        title="Zkopírovat odkaz"
+                        style={{ padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {calendarCopying ? <Check size={18} /> : <Copy size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ 
+                    marginTop: '20px', 
+                    paddingTop: '16px', 
+                    borderTop: '1px solid #1e293b', 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    gap: '10px' 
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                      <button 
+                        className="btn btn-secondary"
+                        onClick={handleGenerateCalendarToken}
+                        style={{ flex: 1, padding: '8px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                        title="Starý odkaz přestane fungovat a vygeneruje se nový"
+                      >
+                        <RefreshCw size={14} />
+                        <span>Generovat nový</span>
+                      </button>
+                      <button 
+                        className="btn btn-danger"
+                        onClick={handleDeleteCalendarToken}
+                        style={{ padding: '8px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                        title="Zrušit odběr kalendáře"
+                      >
+                        <Trash2 size={14} />
+                        <span>Zrušit odběr</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

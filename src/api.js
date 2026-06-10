@@ -187,4 +187,31 @@ export const api = {
       })
     );
   },
+
+  async getCalendarToken() {
+    return handleResponse(
+      await fetch(`${API_BASE}/calendar/token`, {
+        headers: getHeaders(),
+      })
+    );
+  },
+
+  async generateCalendarToken() {
+    return handleResponse(
+      await fetch(`${API_BASE}/calendar/token`, {
+        method: 'POST',
+        headers: getHeaders(),
+      })
+    );
+  },
+
+  async deleteCalendarToken() {
+    return handleResponse(
+      await fetch(`${API_BASE}/calendar/token`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      })
+    );
+  },
 };
+
